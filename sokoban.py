@@ -1,5 +1,18 @@
-import sys
 import copy
+import time
+
+
+class Color:
+    # https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+    LIGHT_GRAY = "\033[97m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    GRAY = "\033[90m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+
 
 class Node:
     def __init__(self, state, parent, action):
@@ -23,7 +36,7 @@ class StackFrontier:
 
     def remove(self):
         if self.empty():
-            raise Exception("empty frontier")
+            raise Exception(Color.RED + "Empty frontier" + Color.ENDC)
         else:
             node = self.frontier[-1]
             self.frontier = self.frontier[:-1]
@@ -34,283 +47,186 @@ class QueueFrontier(StackFrontier):
 
     def remove(self):
         if self.empty():
-            raise Exception("empty frontier")
+            raise Exception(Color.RED + "Empty frontier" + Color.ENDC)
         else:
             node = self.frontier[0]
             self.frontier = self.frontier[1:]
             return node
 
 
-class Maze:
+class SokobanAI:
 
-    def __init__(self, filename):
-
-        # Read file and set height and width of maze
-        with open(filename) as f:
-            contents = f.read()
-
-        # Determine height and width of maze
-        contents = contents.splitlines()
-        self.height = len(contents)
-        self.width = max(len(line) for line in contents)
+    def __init__(self, start):
 
         # Determine start
-        self.start = [
-            list("########"),
-            list("#  #   #"),
-            list("# BOOB #"),
-            list("#SBOX ##"),
-            list("# BOOB #"),
-            list("#  #   #"),
-            list("########"),
-        ]
+        self.start = start
 
-        # Determine goal
-        self.goal = [
-            list("########"),
-            list("#  #   #"),
-            list("#  XX  #"),
-            list("#S XX ##"),
-            list("#  XX  #"),
-            list("#  #   #"),
-            list("########"),
-        ]
-
-        # Keep track of walls
-        self.walls = []
-        for i in range(self.height):
-            row = []
-            for j in range(self.width):
-                try:
-                    if contents[i][j] == "#":
-                        row.append(True)
-                    else:
-                        row.append(False)
-                except IndexError:
-                    row.append(False)
-            self.walls.append(row)
+        # Determine height and width of puzzle
+        self.height = len(self.start)
+        self.width = len(self.start[0])
 
         self.solution = None
 
-    # def print(self):
-    #     solution = self.solution[1] if self.solution is not None else None
-    #     print()
-    #     for i, row in enumerate(self.walls):
-    #         for j, col in enumerate(row):
-    #             if col:
-    #                 print("█", end="")
-    #             elif (i, j) == self.start:
-    #                 print("A", end="")
-    #             elif (i, j) == self.goal:
-    #                 print("B", end="")
-    #             elif solution is not None and (i, j) in solution:
-    #                 print("*", end="")
-    #             else:
-    #                 print(" ", end="")
-    #         print()
-    #     print()
-
-    # def replace(str, index, replace):
-    #     new = list(str)
-    #     new[index] = replace
-    #     return ''.join(new)
-
-    def validState(self, state):
-        for i in range(len(state)):
-            for j in range(len(state[i])):
-                if 0 <= i - 1 and state[i-1][j] == '#' and state[i][j] == 'B':
-                    return False
-                if 0 <= i - 1 and state[i-1][j] == 'B' and state[i][j] == '#':
-                    return False
-                if 0 <= j - 1 and state[i][j-1] == 'B' and state[i][j] == '#' and i!=3:
-                    return False
-                if 0 <= j - 1 and state[i][j-1] == '#' and state[i][j] == 'B':
-                    return False
-        return True
-
     def neighbors(self, state):
-        # S = SOLDIER
-        # B = BOX
-        # O = BOMB
-        # X = BOXED BOMB
-        # # = WALL
-        # Q = SOLDIER BOMB
+        # 👷 = WORKER
+        # 📦 = BOX
+        # ❌ = SPOT
+        # 👷❌ = WORKER IN SPOT
+        # 📦❌ = BOX IN SPOT
+        # ⬛ = WALL
         #   = EMPTY
 
         result = []
         for i in range(self.height):
             for j in range(self.width):
-                # If current position is SOLDIER or SOLDIER BOMB
-                if state[i][j] == "S" or state[i][j] == "Q":
-                    # If soldier is standing on bomb, leaves behind bomb. Otherwise leaves empty space.
-                    leaveBehind = " " if state[i][j] == "S" else "O"
+                # If current position is worker or worker spot
+                if state[i][j] == "👷" or state[i][j] == "👷❌":
+                    # If worker is standing on spot, leaves behind spot. Otherwise leaves empty space.
+                    leaveBehind = " " if state[i][j] == "👷" else "❌"
                     newState = copy.deepcopy(state)
                     # UP
                     if state[i - 1][j] == " ":
-                        newState[i - 1][j] = "S"
+                        newState[i - 1][j] = "👷"
                         newState[i][j] = leaveBehind
-                        if self.validState(newState):
-                            result.append(("up", newState))
-                    elif state[i - 1][j] == "B" and 0 <= i - 2:
+                        result.append(("up", newState))
+                    elif state[i - 1][j] == "📦" and 0 <= i - 2:
                         if state[i - 2][j] == " ":
-                            newState[i - 2][j] = "B"
-                            newState[i - 1][j] = "S"
+                            newState[i - 2][j] = "📦"
+                            newState[i - 1][j] = "👷"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("up", newState))
-                        elif state[i - 2][j] == "O":
-                            newState[i - 2][j] = "X"
-                            newState[i - 1][j] = "S"
+                            result.append(("up", newState))
+                        elif state[i - 2][j] == "❌":
+                            newState[i - 2][j] = "📦❌"
+                            newState[i - 1][j] = "👷"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("up", newState))
-                    elif state[i - 1][j] == "O":
-                        newState[i - 1][j] = "Q"
+                            result.append(("up", newState))
+                    elif state[i - 1][j] == "❌":
+                        newState[i - 1][j] = "👷❌"
                         newState[i][j] = leaveBehind
-                        if self.validState(newState):
-                            result.append(("up", newState))
-                    elif state[i - 1][j] == "X" and 0 <= i - 2:
+                        result.append(("up", newState))
+                    elif state[i - 1][j] == "📦❌" and 0 <= i - 2:
                         if state[i - 2][j] == " ":
-                            newState[i - 2][j] = "B"
-                            newState[i - 1][j] = "Q"
+                            newState[i - 2][j] = "📦"
+                            newState[i - 1][j] = "👷❌"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("up", newState))
-                        elif state[i - 2][j] == "O":
-                            newState[i - 2][j] = "X"
-                            newState[i - 1][j] = "Q"
+                            result.append(("up", newState))
+                        elif state[i - 2][j] == "❌":
+                            newState[i - 2][j] = "📦❌"
+                            newState[i - 1][j] = "👷❌"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("up", newState))
+                            result.append(("up", newState))
 
                     newState = copy.deepcopy(state)
                     # DOWN
                     if state[i + 1][j] == " ":
-                        newState[i + 1][j] = "S"
+                        newState[i + 1][j] = "👷"
                         newState[i][j] = leaveBehind
-                        if self.validState(newState):
-                            result.append(("down", newState))
-                    elif state[i + 1][j] == "B" and i + 2 < len(state):
+                        result.append(("down", newState))
+                    elif state[i + 1][j] == "📦" and i + 2 < len(state):
                         if state[i + 2][j] == " ":
-                            newState[i + 2][j] = "B"
-                            newState[i + 1][j] = "S"
+                            newState[i + 2][j] = "📦"
+                            newState[i + 1][j] = "👷"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("down", newState))
-                        elif state[i + 2][j] == "O":
-                            newState[i + 2][j] = "X"
-                            newState[i + 1][j] = "S"
+                            result.append(("down", newState))
+                        elif state[i + 2][j] == "❌":
+                            newState[i + 2][j] = "📦❌"
+                            newState[i + 1][j] = "👷"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("down", newState))
-                    elif state[i + 1][j] == "O":
-                        newState[i + 1][j] = "Q"
+                            result.append(("down", newState))
+                    elif state[i + 1][j] == "❌":
+                        newState[i + 1][j] = "👷❌"
                         newState[i][j] = leaveBehind
-                        if self.validState(newState):
-                            result.append(("down", newState))
-                    elif state[i + 1][j] == "X" and i + 2 < len(state):
+                        result.append(("down", newState))
+                    elif state[i + 1][j] == "📦❌" and i + 2 < len(state):
                         if state[i + 2][j] == " ":
-                            newState[i + 2][j] = "B"
-                            newState[i + 1][j] = "Q"
+                            newState[i + 2][j] = "📦"
+                            newState[i + 1][j] = "👷❌"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("down", newState))
-                        elif state[i + 2][j] == "O":
-                            newState[i + 2][j] = "X"
-                            newState[i + 1][j] = "Q"
+                            result.append(("down", newState))
+                        elif state[i + 2][j] == "❌":
+                            newState[i + 2][j] = "📦❌"
+                            newState[i + 1][j] = "👷❌"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("down", newState))
+                            result.append(("down", newState))
 
                     newState = copy.deepcopy(state)
                     # LEFT
                     if state[i][j - 1] == " ":
-                        newState[i][j - 1] = "S"
+                        newState[i][j - 1] = "👷"
                         newState[i][j] = leaveBehind
-                        if self.validState(newState):
-                            result.append(("left", newState))
-                    elif state[i][j - 1] == "B" and 0 <= j - 2:
+                        result.append(("left", newState))
+                    elif state[i][j - 1] == "📦" and 0 <= j - 2:
                         if state[i][j - 2] == " ":
-                            newState[i][j - 2] = "B"
-                            newState[i][j - 1] = "S"
+                            newState[i][j - 2] = "📦"
+                            newState[i][j - 1] = "👷"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("left", newState))
-                        elif state[i][j - 2] == "O":
-                            newState[i][j - 2] = "X"
-                            newState[i][j - 1] = "S"
+                            result.append(("left", newState))
+                        elif state[i][j - 2] == "❌":
+                            newState[i][j - 2] = "📦❌"
+                            newState[i][j - 1] = "👷"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("left", newState))
-                    elif state[i][j - 1] == "O":
-                        newState[i][j - 1] = "Q"
+                            result.append(("left", newState))
+                    elif state[i][j - 1] == "❌":
+                        newState[i][j - 1] = "👷❌"
                         newState[i][j] = leaveBehind
-                        if self.validState(newState):
-                            result.append(("left", newState))
-                    elif state[i][j - 1] == "X" and 0 <= j - 2:
+                        result.append(("left", newState))
+                    elif state[i][j - 1] == "📦❌" and 0 <= j - 2:
                         if state[i][j - 2] == " ":
-                            newState[i][j - 2] = "B"
-                            newState[i][j - 1] = "Q"
+                            newState[i][j - 2] = "📦"
+                            newState[i][j - 1] = "👷❌"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("left", newState))
-                        elif state[i][j - 2] == "O":
-                            newState[i][j - 2] = "X"
-                            newState[i][j - 1] = "Q"
+                            result.append(("left", newState))
+                        elif state[i][j - 2] == "❌":
+                            newState[i][j - 2] = "📦❌"
+                            newState[i][j - 1] = "👷❌"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("left", newState))
+                            result.append(("left", newState))
 
                     newState = copy.deepcopy(state)
                     # RIGHT
                     if state[i][j + 1] == " ":
-                        newState[i][j + 1] = "S"
+                        newState[i][j + 1] = "👷"
                         newState[i][j] = leaveBehind
-                        if self.validState(newState):
-                            result.append(("right", newState))
-                    elif state[i][j + 1] == "B" and j + 2 < len(state[i]):
+                        result.append(("right", newState))
+                    elif state[i][j + 1] == "📦" and j + 2 < len(state[i]):
                         if state[i][j + 2] == " ":
-                            newState[i][j + 2] = "B"
-                            newState[i][j + 1] = "S"
+                            newState[i][j + 2] = "📦"
+                            newState[i][j + 1] = "👷"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("right", newState))
-                        elif state[i][j + 2] == "O":
-                            newState[i][j + 2] = "X"
-                            newState[i][j + 1] = "S"
+                            result.append(("right", newState))
+                        elif state[i][j + 2] == "❌":
+                            newState[i][j + 2] = "📦❌"
+                            newState[i][j + 1] = "👷"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("right", newState))
-                    elif state[i][j + 1] == "O":
-                        newState[i][j + 1] = "Q"
+                            result.append(("right", newState))
+                    elif state[i][j + 1] == "❌":
+                        newState[i][j + 1] = "👷❌"
                         newState[i][j] = leaveBehind
-                        if self.validState(newState):
-                            result.append(("right", newState))
-                    elif state[i][j + 1] == "X" and j + 2 < len(state[i]):
+                        result.append(("right", newState))
+                    elif state[i][j + 1] == "📦❌" and j + 2 < len(state[i]):
                         if state[i][j + 2] == " ":
-                            newState[i][j + 2] = "B"
-                            newState[i][j + 1] = "Q"
+                            newState[i][j + 2] = "📦"
+                            newState[i][j + 1] = "👷❌"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("right", newState))
-                        elif state[i][j + 2] == "O":
-                            newState[i][j + 2] = "X"
-                            newState[i][j + 1] = "Q"
+                            result.append(("right", newState))
+                        elif state[i][j + 2] == "❌":
+                            newState[i][j + 2] = "📦❌"
+                            newState[i][j + 1] = "👷❌"
                             newState[i][j] = leaveBehind
-                            if self.validState(newState):
-                                result.append(("right", newState))
-        print(result)
+                            result.append(("right", newState))
+        # Comment the line below to hide AI search text from terminal
+        print(f"Result: {result}")
         return result
 
     def solve(self):
-        """Finds a solution to maze, if one exists."""
+        """Finds a solution to the puzzle, if one exists."""
 
         # Keep track of number of states explored
         self.num_explored = 0
 
         # Initialize frontier to just the starting position
         start = Node(state=self.start, parent=None, action=None)
-        frontier = StackFrontier()
+        frontier = QueueFrontier()
         frontier.add(start)
 
         # Initialize an empty explored set
@@ -321,25 +237,28 @@ class Maze:
 
             # If nothing left in frontier, then no path
             if frontier.empty():
-                raise Exception("no solution")
+                raise Exception(Color.RED + "No solution possible" + Color.ENDC)
 
             # Choose a node from the frontier
             node = frontier.remove()
             self.num_explored += 1
 
-            bombCount = 0
+            spotCount = 0
             for list in node.state:
                 for element in list:
-                    if element == "O" or element == "Q":
-                        bombCount += 1
+                    if element == "❌" or element == "👷❌":
+                        spotCount += 1
             # If node is the goal, then we have a solution
-            if bombCount == 0:
+            if spotCount == 0:
                 actions = []
+                cells = []
                 while node.parent is not None:
                     actions.append(node.action)
+                    cells.append(node.state)
                     node = node.parent
                 actions.reverse()
-                self.solution = actions
+                cells.reverse()
+                self.solution = (actions, cells)
                 return
 
             # Mark node as explored
@@ -351,66 +270,150 @@ class Maze:
                     child = Node(state=state, parent=node, action=action)
                     frontier.add(child)
 
-    # def output_image(self, filename, show_solution=True, show_explored=False):
-    #     from PIL import Image, ImageDraw
-    #     cell_size = 50
-    #     cell_border = 2
 
-    #     # Create a blank canvas
-    #     img = Image.new(
-    #         "RGBA",
-    #         (self.width * cell_size, self.height * cell_size),
-    #         "black"
-    #     )
-    #     draw = ImageDraw.Draw(img)
-
-    #     solution = self.solution[1] if self.solution is not None else None
-    #     for i, row in enumerate(self.walls):
-    #         for j, col in enumerate(row):
-
-    #             # Walls
-    #             if col:
-    #                 fill = (40, 40, 40)
-
-    #             # Start
-    #             elif (i, j) == self.start:
-    #                 fill = (255, 0, 0)
-
-    #             # Goal
-    #             elif (i, j) == self.goal:
-    #                 fill = (0, 171, 28)
-
-    #             # Solution
-    #             elif solution is not None and show_solution and (i, j) in solution:
-    #                 fill = (220, 235, 113)
-
-    #             # Explored
-    #             elif solution is not None and show_explored and (i, j) in self.explored:
-    #                 fill = (212, 97, 85)
-
-    #             # Empty cell
-    #             else:
-    #                 fill = (237, 240, 252)
-
-    #             # Draw cell
-    #             draw.rectangle(
-    #                 ([(j * cell_size + cell_border, i * cell_size + cell_border),
-    #                   ((j + 1) * cell_size - cell_border, (i + 1) * cell_size - cell_border)]),
-    #                 fill=fill
-    #             )
-
-    #     img.save(filename)
+# Terminal display
+def placeEmoji(grid, x, y, emoji):
+    if (grid[x][y]) != " " and emoji != " ":
+        raise Exception(Color.RED + "Occupied space" + Color.ENDC)
+    else:
+        grid[x][y] = emoji
 
 
-if len(sys.argv) != 2:
-    sys.exit("Usage: python maze.py maze.txt")
+def printGrid(grid):
+    line = "  "
+    for j in range(int(columns)):
+        line += "  " + chr(ord("A") + j)
+    print(line)
+    line = "   ┌"
+    for j in range(int(columns) - 1):
+        line += "──┬"
+    line += "──┐"
+    print(line)
+    dividerLine = "   │"
+    for j in range(int(columns)):
+        dividerLine += "──│"
+    for i in range(int(rows)):
+        line = str(i + 1) + "  │"
+        for j in range(int(columns)):
+            if grid[i][j] == " ":
+                line += "  │"
+            else:
+                if "👷" in grid[i][j]:
+                    line += "👷│"
+                elif "📦" in grid[i][j]:
+                    line += "📦│"
+                else:
+                    line += grid[i][j] + "│"
+        print(line)
+        if i < int(rows) - 1:
+            print(dividerLine)
+    line = "   └"
+    for j in range(int(columns) - 1):
+        line += "──┴"
+    line += "──┘"
+    print(line)
 
-m = Maze(sys.argv[1])
-# print("Maze:")
-# m.print()
-# print("Solving...")
-m.solve()
-# print("States Explored:", m.num_explored)
-# print("Solution:")
-print(m.solution)
-# m.output_image("maze.png", show_explored=True)
+
+rows = input("How many rows are in your puzzle?\n")
+columns = input("How many columns are in your puzzle?\n")
+puzzleGrid = [[" " for _ in range(int(columns))] for _ in range(int(rows))]
+
+printGrid(puzzleGrid)
+stillSetup = True
+while stillSetup:
+    emojiNum = int(
+        input(
+            f"What do you want to place?\n    {Color.BOLD}{Color.GREEN}1{Color.ENDC}. {Color.YELLOW}Worker\n    {Color.BOLD}{Color.GREEN}2{Color.ENDC}. {Color.LIGHT_GRAY}Box\n    {Color.BOLD}{Color.GREEN}3{Color.ENDC}. {Color.RED}Spot\n    {Color.BOLD}{Color.GREEN}4{Color.ENDC}. {Color.YELLOW}Worker in a Spot\n    {Color.BOLD}{Color.GREEN}5{Color.ENDC}. {Color.LIGHT_GRAY}Box in a Spot\n    {Color.BOLD}{Color.GREEN}6{Color.ENDC}. {Color.GRAY}Wall\n    {Color.BOLD}{Color.GREEN}7{Color.ENDC}. Empty Space{Color.ENDC}\n"
+        )
+    )
+    if emojiNum > 10 or emojiNum < 1:
+        raise Exception(Color.RED + "Index out of range" + Color.ENDC)
+    emoji = ""
+    match emojiNum:
+        case 1:
+            emoji = "👷"
+        case 2:
+            emoji = "📦"
+        case 3:
+            emoji = "❌"
+        case 4:
+            emoji = "👷❌"
+        case 5:
+            emoji = "📦❌"
+        case 6:
+            emoji = "⬛"
+        case 7:
+            emoji = " "
+    printGrid(puzzleGrid)
+    coord = input(
+        f"Where would you like to place this block? ({Color.UNDERLINE}{Color.GREEN}e.g. a1{Color.ENDC})\n"
+    ).lower()
+    line = ""
+    for j in range(int(columns)):
+        line += chr(ord("A") + j)
+    if not (coord[:1].lower() in line.lower()) or int(coord[1:]) < 1:
+        raise Exception(Color.RED + "Index out of range" + Color.ENDC)
+    placeEmoji(puzzleGrid, int(coord[1:]) - 1, ord(coord[:1]) - 97, emoji)
+
+    printGrid(puzzleGrid)
+    startSearch = input(
+        f"Start search? {Color.UNDERLINE}{Color.GREEN}y{Color.ENDC}/{Color.RED}n{Color.ENDC}\n"
+    ).lower()
+    if startSearch != "y" and startSearch != "n":
+        raise Exception(Color.RED + "Option unavailable" + Color.ENDC)
+    if startSearch == "y":
+        stillSetup = False
+
+newGrid = [
+    ["⬛" for _ in range(len(puzzleGrid[0]) + 2)] for _ in range(len(puzzleGrid) + 2)
+]
+for i in range(len(puzzleGrid)):
+    for j in range(len(puzzleGrid[0])):
+        newGrid[i + 1][j + 1] = puzzleGrid[i][j]
+
+p = SokobanAI(newGrid)
+timerStart = time.time()
+p.solve()
+timerEnd = time.time()
+print(
+    f"\n{Color.BOLD}{Color.UNDERLINE}{Color.GREEN}States explored{Color.ENDC}: {p.num_explored}\n"
+)
+print(
+    f"{Color.BOLD}{Color.UNDERLINE}{Color.GREEN}Ideal move count{Color.ENDC}: {len(p.solution[0])}\n"
+)
+print(
+    f"{Color.BOLD}{Color.UNDERLINE}{Color.GREEN}Solution{Color.ENDC}: {p.solution[0]}\n"
+)
+print(
+    f"{Color.BOLD}{Color.UNDERLINE}{Color.GREEN}Solution found in{Color.ENDC}: {int((timerEnd-timerStart)/60)}m {int((timerEnd-timerStart)%60)}s\n"
+)
+
+
+displayMoves = input(
+    f"Display moves in terminal? {Color.UNDERLINE}{Color.GREEN}y{Color.ENDC}/{Color.RED}n{Color.ENDC}\n"
+).lower()
+if displayMoves != "y" and displayMoves != "n":
+    raise Exception(Color.RED + "Option unavailable" + Color.ENDC)
+if displayMoves == "y":
+    displayMoves = True
+i = 0
+while displayMoves and i < len(p.solution[1]):
+    tempGrid = [
+        [" " for _ in range(len(p.solution[1][0][0]) - 2)]
+        for _ in range(len(p.solution[1][0]) - 2)
+    ]
+    for x in range(len(tempGrid)):
+        for y in range(len(tempGrid[0])):
+            tempGrid[x][y] = p.solution[1][i][x + 1][y + 1]
+    print(f"Move {i+1}:")
+    printGrid(tempGrid)
+    if i + 1 == len(p.solution[0]):
+        print(f"{Color.BOLD}{Color.GREEN}Solution reached{Color.ENDC}")
+        displayMoves = False
+    else:
+        keepGoing = input(
+            f"Press any key to keep going, or {Color.UNDERLINE}{Color.GREEN}q{Color.ENDC} to quit\n"
+        ).lower()
+        if keepGoing == "q":
+            displayMoves = False
+    i += 1

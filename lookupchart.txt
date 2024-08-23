@@ -1,0 +1,7 @@
+👷 = WORKER
+📦 = BOX
+❌ = SPOT
+👷❌ = WORKER IN SPOT
+📦❌ = BOX IN SPOT
+⬛ = WALL
+  = EMPTY
