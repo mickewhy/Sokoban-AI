@@ -18,7 +18,7 @@ This program utilizes Artificial Intelligence to find the solution with the leas
 ## 👷 Demo
 <div align="center">
   <img height=200 src= "./Demo1.png">
-  <img src= "./Demo2.png">
+  <img height = 100 src= "./Demo2.png">
   <img height=350 src= "./Demo3.png">
 </div>
 
